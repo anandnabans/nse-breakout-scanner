@@ -1,0 +1,43 @@
+name: NSE Breakout Scanner
+
+on:
+  # Runs Mon–Fri at 3:15 PM IST = 09:45 UTC
+  schedule:
+    - cron: "45 9 * * 1-5"
+  # Also lets you trigger manually from GitHub UI anytime
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install git+https://github.com/rongardF/tvdatafeed.git
+          pip install pandas numpy requests
+
+      - name: Run NSE Scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          python3 main.py
+
+      - name: Upload CSV results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan-results-${{ github.run_id }}
+          path: outputs/*.csv
+          retention-days: 30
