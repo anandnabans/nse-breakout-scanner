@@ -19,7 +19,7 @@ def send_telegram(message):
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat  = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat:
-        print("  No Telegram credentials — skipping alert")
+        print("  No Telegram credentials — skipping")
         return
     try:
         resp = requests.post(
@@ -34,39 +34,55 @@ def send_telegram(message):
     except Exception as e:
         print(f"  Telegram error: {e}")
 
-def format_telegram_message(signals, total_scanned, above_ema_list):
-    date_str  = datetime.now().strftime("%d %b %Y %H:%M IST")
-    lines     = []
+def format_telegram_message(signals, total_scanned):
+    date_str = datetime.now().strftime("%d %b %Y %H:%M IST")
 
-    lines.append(f"🚀 NSE BREAKOUT SCANNER")
+    bullish  = [s for s in signals if "BULLISH" in s["direction"]]
+    bearish  = [s for s in signals if "BEARISH" in s["direction"]]
+
+    lines = []
+    lines.append(f"🚀 NSE EMA20 SCANNER")
     lines.append(f"📅 {date_str}")
     lines.append(f"📊 Scanned: {total_scanned} stocks")
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    if signals:
-        lines.append(f"✅ BREAKOUT SIGNALS: {len(signals)}")
+    # Bullish section
+    if bullish:
+        lines.append(f"🟢 BREAKOUT ABOVE EMA20 ({len(bullish)})")
         lines.append("")
-        for i, s in enumerate(signals, 1):
+        for i, s in enumerate(bullish, 1):
             lines.append(
                 f"#{i} {s['symbol']}\n"
                 f"   💰 ₹{s['price']}  |  EMA20: ₹{s['ema20']}\n"
-                f"   📈 Break: +{s['ema_break_pct']}%\n"
-                f"   🔥 Vol Ratio: {s['vol_ratio']}×\n"
-                f"   📉 RSI: {s['rsi14']}"
+                f"   📈 Above EMA by: {s['ema_break_pct']}\n"
+                f"   🔥 Vol Ratio: {s['vol_ratio']}×  |  RSI: {s['rsi14']}"
             )
             lines.append("")
     else:
-        lines.append("❌ No genuine EMA20 breakouts today")
+        lines.append("🟢 BREAKOUT ABOVE EMA20: None today")
         lines.append("")
-        if above_ema_list:
-            lines.append(f"📈 Stocks above EMA20 ({len(above_ema_list)}):")
-            lines.append(", ".join(above_ema_list[:10]))
-            if len(above_ema_list) > 10:
-                lines.append(f"...and {len(above_ema_list)-10} more")
 
-    lines.append("")
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("Conditions: Close>EMA20 | Was below EMA yesterday | Green candle | Today vol > Yest vol")
+
+    # Bearish section
+    if bearish:
+        lines.append(f"🔴 BREAKDOWN BELOW EMA20 ({len(bearish)})")
+        lines.append("")
+        for i, s in enumerate(bearish, 1):
+            lines.append(
+                f"#{i} {s['symbol']}\n"
+                f"   💰 ₹{s['price']}  |  EMA20: ₹{s['ema20']}\n"
+                f"   📉 Below EMA by: {s['ema_break_pct']}\n"
+                f"   🔥 Vol Ratio: {s['vol_ratio']}×  |  RSI: {s['rsi14']}"
+            )
+            lines.append("")
+    else:
+        lines.append("🔴 BREAKDOWN BELOW EMA20: None today")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("✅ Conditions (both): Fresh EMA20 cross | Today vol > Yest vol | Candle confirms direction")
+
     return "\n".join(lines)
 
 def run_scan():
@@ -74,56 +90,42 @@ def run_scan():
     from config import NSE_SYMBOLS, OUTPUT_DIR
     from data_fetcher import DataFetcher
     from scanner import BreakoutScanner
-    from tvDatafeed import TvDatafeed, Interval
 
     print("=" * 65)
-    print(f"  NSE BREAKOUT SCANNER  |  {datetime.now():%d %b %Y %H:%M IST}")
-    print(f"  Close > EMA20 (prev)  |  Today Vol > Yesterday Vol")
+    print(f"  NSE EMA20 SCANNER  |  {datetime.now():%d %b %Y %H:%M IST}")
+    print(f"  🟢 Breakout Above EMA20  |  🔴 Breakdown Below EMA20")
     print("=" * 65)
 
     fetcher  = DataFetcher(delay=0.4)
     dataset  = fetcher.fetch_all(NSE_SYMBOLS)
 
-    # Track stocks above EMA for Telegram summary
-    above_ema_list = []
-    for symbol, df in dataset.items():
-        try:
-            df2 = df.copy()
-            df2['ema20'] = df2['close'].ewm(span=20, adjust=False).mean()
-            curr = df2.iloc[-1]
-            prev = df2.iloc[-2]
-            if curr['close'] > prev['ema20']:
-                above_ema_list.append(symbol)
-        except:
-            pass
-
     scanner  = BreakoutScanner()
     signals  = scanner.scan(dataset)
     df_out   = scanner.to_dataframe(signals)
 
+    bullish  = [s for s in signals if "BULLISH" in s["direction"]]
+    bearish  = [s for s in signals if "BEARISH" in s["direction"]]
+
     print("\n" + "=" * 65)
-    print(f"  Stocks above EMA20: {len(above_ema_list)} → {', '.join(above_ema_list)}")
+    print(f"  🟢 BULLISH BREAKOUTS: {len(bullish)}  |  🔴 BEARISH BREAKDOWNS: {len(bearish)}")
     print("=" * 65)
 
     if df_out.empty:
-        print("\n  No genuine EMA20 breakout signals found today.")
-        print("  (Needs: fresh crossover + vol up + green candle)")
+        print("\n  No signals found today.")
     else:
-        print(f"\n  BREAKOUT SIGNALS FOUND: {len(signals)}")
-        print("=" * 65)
         print(df_out.to_string(index=False))
         Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
         ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
-        csvpath = f"{OUTPUT_DIR}/breakout_{ts}.csv"
+        csvpath = f"{OUTPUT_DIR}/signals_{ts}.csv"
         df_out.to_csv(csvpath, index=False)
         print(f"\n  Saved: {csvpath}")
 
     print("=" * 65)
 
-    msg = format_telegram_message(signals, len(dataset), above_ema_list)
-    print("\n--- TELEGRAM MESSAGE PREVIEW ---")
+    msg = format_telegram_message(signals, len(dataset))
+    print("\n--- TELEGRAM PREVIEW ---")
     print(msg)
-    print("--------------------------------\n")
+    print("------------------------\n")
     send_telegram(msg)
     return signals
 
