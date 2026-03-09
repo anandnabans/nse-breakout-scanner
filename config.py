@@ -11,7 +11,7 @@ TV_PASSWORD = ""
 TV_EXCHANGE = "NSE"
 TV_LOOKBACK_BARS = 60
 
-OUTPUT_DIR   = "/Users/anandkiruthi/NSEScanner/outputs"
+OUTPUT_DIR = "outputs"
 CSV_FILENAME = "breakout_signals.csv"
 
 TELEGRAM_ENABLED   = False
